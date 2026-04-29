@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#d8d3c8" />
+  <title>本地陪伴 AI 聊天</title>
+  <style>
+    :root {
+      --bg: #f3eee4;
+      --panel: rgba(255, 252, 246, 0.68);
+      --text: #4a4a45;
+      --muted: #7f7a71;
+      --accent: #aeb8a1;
+      --accent-2: #cad2bf;
+      --bubble-you: #faf8f2;
+      --bubble-me: #dfe7db;
+      --shadow: 0 10px 30px rgba(132, 124, 104, 0.13);
+      --radius-xl: 26px;
+      --radius-lg: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Inter", "PingFang SC", "Noto Sans SC", sans-serif;
+      color: var(--text);
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 20% 15%, rgba(255,255,255,0.4), transparent 45%),
+        radial-gradient(circle at 80% 85%, rgba(180,190,160,0.22), transparent 45%),
+        linear-gradient(160deg, #f5f1e8, #ece6db 65%, #e7e1d6);
+      position: relative;
+      overflow: hidden;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 100 100'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
+      mix-blend-mode: multiply;
+      opacity: .45;
+    }
+
+    .app {
+      width: min(100vw, 430px);
+      margin: 0 auto;
+      height: 100vh;
+      padding: 16px 14px 90px;
+      overflow-y: auto;
+      position: relative;
+    }
+
+    .glass {
+      background: var(--panel);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.35);
+      box-shadow: var(--shadow);
+      border-radius: var(--radius-xl);
+    }
+
+    .lock {
+      padding: 24px;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    .time { font-size: 56px; letter-spacing: 1px; font-weight: 300; }
+    .date { color: var(--muted); margin-top: 8px; }
+    .days {
+      margin-top: 14px;
+      background: rgba(255,255,255,0.55);
+      border-radius: 14px;
+      padding: 10px;
+      font-size: 14px;
+      color: #68655f;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .card {
+      padding: 16px;
+      min-height: 120px;
+      border-radius: var(--radius-lg);
+      border: none;
+      text-align: left;
+      color: var(--text);
+      cursor: pointer;
+      background: rgba(255,255,255,0.6);
+      box-shadow: var(--shadow);
+    }
+    .card h3 { margin: 0 0 8px; font-size: 16px; }
+    .card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
+
+    .panel {
+      position: fixed;
+      inset: 0;
+      background: rgba(228,223,211,.55);
+      backdrop-filter: blur(6px);
+      display: none;
+      z-index: 10;
+    }
+    .panel.active { display: block; }
+    .panel-body {
+      width: min(100vw, 430px);
+      height: 100vh;
+      margin: 0 auto;
+      background: #f2ede3;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .topbar { display: flex; justify-content: space-between; align-items: center; }
+    .topbar button { border:none; background: #d6deca; border-radius: 999px; padding: 6px 12px; }
+
+    .chat-log { flex: 1; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+    .msg { display:flex; gap:8px; align-items:flex-end; }
+    .msg.me { flex-direction: row-reverse; }
+    .avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid #fff; }
+    .bubble { max-width: 72%; padding: 10px 12px; border-radius: 16px; font-size: 14px; background: var(--bubble-you); }
+    .msg.me .bubble { background: var(--bubble-me); }
+    .bubble img { max-width: 100%; border-radius: 10px; }
+
+    .chat-input { display:flex; gap:8px; }
+    input, textarea, select { width:100%; border:none; border-radius:14px; padding:10px; background:#fffdf9; }
+    textarea { min-height: 80px; resize: vertical; }
+    .btn { border:none; border-radius:12px; padding:10px 14px; background:#b7c1a8; color:#fff; }
+
+    .two { display:grid; grid-template-columns:1fr; gap:10px; }
+    .section { padding:12px; border-radius:16px; background: rgba(255,255,255,.65); }
+    .tabs { display:flex; gap:8px; flex-wrap: wrap; }
+    .tab { border:none; border-radius:999px; padding:6px 10px; background:#e6e1d8; }
+    .tab.active { background:#bcc8b2; color:#fff; }
+
+    .player {
+      position: fixed;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(92vw, 390px);
+      z-index: 5;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .tiny { font-size:12px; color:var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="lock glass">
+      <div class="time" id="time"></div>
+      <div class="date" id="date"></div>
+      <div class="days" id="days"></div>
+    </section>
+
+    <section class="grid" id="grid"></section>
+  </div>
+
+  <div class="player glass" id="player">
+    <button class="btn" id="importAudio">导入音乐</button>
+    <button class="btn" id="playPause">播放</button>
+    <button class="btn" id="next">下一首</button>
+    <div class="tiny" id="songName">暂无音乐</div>
+    <input id="audioFiles" type="file" accept="audio/*" multiple hidden />
+  </div>
+
+  <div class="panel" id="panel"></div>
+
+  <script>
+    const STORAGE_KEY = "local_ai_phone_v1";
+    const initState = {
+      chat: [],
+      profiles: {
+        you: { name: "You", persona: "温柔，理性，真诚", memory: "喜欢自然色与安静陪伴" },
+        me: { name: "Me", persona: "细腻，可靠，疗愈", memory: "偏爱慢节奏、记录细节" }
+      },
+      notes: { diary: "", letters: "", media: "", books: "" },
+      settings: {
+        apiUrl: "", apiKey: "", model: "gpt-4o-mini",
+        bubbleYou: "#faf8f2", bubbleMe: "#dfe7db", wallpaperEnabled: true
+      }
+    };
+    let state = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") || initState;
+    const persist = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+    const cards = [
+      ["主卧聊天室", "全屏陪伴对话，支持图片与头像切换", openChat],
+      ["Profiles 区", "You / Me 角色设定与记忆摘要", openProfiles],
+      ["日记书信 & 多媒体", "diary / letters / media / books", openNotes],
+      ["设置与安全", "API、UI、导入导出", openSettings],
+    ];
+    const grid = document.getElementById("grid");
+    cards.forEach(([t,d,fn]) => {
+      const b = document.createElement("button");
+      b.className = "card";
+      b.innerHTML = `<h3>${t}</h3><p>${d}</p>`;
+      b.onclick = fn;
+      grid.appendChild(b);
+    });
+
+    function tick() {
+      const now = new Date();
+      const pad = n => String(n).padStart(2, "0");
+      document.getElementById("time").textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      document.getElementById("date").textContent = now.toLocaleDateString("zh-CN", { year:"numeric", month:"long", day:"numeric", weekday:"long" });
+      const start = new Date("2024-06-22T00:00:00");
+      const diff = Math.floor((now - start) / 86400000);
+      document.getElementById("days").textContent = `初遇 · 2024-06-22 ｜ 已一起走过 ${diff} 天`;
+    }
+    setInterval(tick, 1000); tick();
+
+    const panel = document.getElementById("panel");
+    function showPanel(title, content) {
+      panel.className = "panel active";
+      panel.innerHTML = `<div class="panel-body"><div class="topbar"><strong>${title}</strong><button id='backBtn'>返回</button></div>${content}</div>`;
+      document.getElementById("backBtn").onclick = () => panel.className = "panel";
+    }
+
+    function openChat() {
+      showPanel("主卧聊天室", `<div class='chat-log' id='chatLog'></div>
+      <div class='chat-input'><input id='chatText' placeholder='输入想说的话...' /><input id='chatImage' type='file' accept='image/*' /><button class='btn' id='sendMsg'>发送</button></div>
+      <input id='avatarPicker' type='file' accept='image/*' hidden />`);
+      const log = document.getElementById("chatLog");
+      const render = () => {
+        document.documentElement.style.setProperty("--bubble-you", state.settings.bubbleYou);
+        document.documentElement.style.setProperty("--bubble-me", state.settings.bubbleMe);
+        log.innerHTML = "";
+        state.chat.forEach((m, i) => {
+          const row = document.createElement("div"); row.className = `msg ${m.role === "me" ? "me" : ""}`;
+          row.innerHTML = `<img class='avatar' data-role='${m.role}' src='${state.profiles[m.role].avatar || "https://placehold.co/64x64/e6e1d8/777?text="+m.role}' />
+            <div class='bubble'>${m.type==="image"?`<img src='${m.content}' />`:m.content}</div>`;
+          log.appendChild(row);
+        });
+        log.scrollTop = log.scrollHeight;
+        log.querySelectorAll(".avatar").forEach(a => {
+          a.onclick = () => {
+            const picker = document.getElementById("avatarPicker");
+            picker.onchange = e => {
+              const file = e.target.files[0]; if (!file) return;
+              const r = new FileReader();
+              r.onload = () => { state.profiles[a.dataset.role].avatar = r.result; persist(); render(); };
+              r.readAsDataURL(file);
+            };
+            picker.click();
+          };
+        });
+      };
+      render();
+      document.getElementById("sendMsg").onclick = () => {
+        const txt = document.getElementById("chatText");
+        const img = document.getElementById("chatImage");
+        if (txt.value.trim()) state.chat.push({ role:"you", type:"text", content: txt.value.trim(), ts: Date.now() });
+        if (img.files[0]) {
+          const r = new FileReader();
+          r.onload = () => { state.chat.push({ role:"you", type:"image", content:r.result, ts: Date.now() }); persist(); render(); };
+          r.readAsDataURL(img.files[0]);
+        }
+        txt.value = ""; img.value = ""; persist(); render();
+      };
+    }
+
+    function openProfiles() {
+      showPanel("Profiles 区", `<div class='two'>${["you","me"].map(k => `<div class='section'>
+        <h4>${k.toUpperCase()}</h4>
+        <input id='${k}Name' placeholder='名字' value='${state.profiles[k].name||""}' />
+        <textarea id='${k}Persona' placeholder='个性设定'>${state.profiles[k].persona||""}</textarea>
+        <textarea id='${k}Memory' placeholder='记忆摘要'>${state.profiles[k].memory||""}</textarea>
+      </div>`).join("")}
+      <button class='btn' id='saveProfiles'>保存 Profiles</button></div>`);
+      document.getElementById("saveProfiles").onclick = () => {
+        ["you","me"].forEach(k => state.profiles[k] = {
+          ...state.profiles[k],
+          name: document.getElementById(`${k}Name`).value,
+          persona: document.getElementById(`${k}Persona`).value,
+          memory: document.getElementById(`${k}Memory`).value
+        });
+        persist();
+      };
+    }
+
+    function openNotes() {
+      showPanel("日记书信 & 多媒体", `<div class='tabs' id='tabs'></div><textarea id='noteArea'></textarea><button class='btn' id='saveNote'>保存</button>`);
+      const tabs = ["diary","letters","media","books"];
+      let active = "diary";
+      const tEl = document.getElementById("tabs");
+      const area = document.getElementById("noteArea");
+      const draw = () => {
+        tEl.innerHTML = "";
+        tabs.forEach(t => {
+          const b = document.createElement("button");
+          b.className = `tab ${active===t?"active":""}`; b.textContent = t;
+          b.onclick = () => { active = t; draw(); };
+          tEl.appendChild(b);
+        });
+        area.value = state.notes[active] || "";
+      };
+      draw();
+      document.getElementById("saveNote").onclick = () => { state.notes[active] = area.value; persist(); };
+    }
+
+    function openSettings() {
+      showPanel("设置与安全", `<div class='section'>
+        <h4>API 配置</h4>
+        <input id='apiUrl' placeholder='API URL' value='${state.settings.apiUrl}' />
+        <input id='apiKey' placeholder='API Key' value='${state.settings.apiKey}' />
+        <input id='apiModel' placeholder='模型名' value='${state.settings.model}' />
+      </div>
+      <div class='section'><h4>UI 自定义</h4>
+        <label>对方气泡色<input id='bubbleYou' type='color' value='${state.settings.bubbleYou}'></label>
+        <label>我方气泡色<input id='bubbleMe' type='color' value='${state.settings.bubbleMe}'></label>
+      </div>
+      <div class='section'><h4>数据安全</h4>
+        <button class='btn' id='exportBtn'>导出 JSON</button>
+        <button class='btn' id='importBtn'>导入 JSON</button>
+        <input type='file' id='importFile' accept='application/json' hidden />
+      </div>
+      <button class='btn' id='saveSettings'>保存设置</button>`);
+
+      document.getElementById("saveSettings").onclick = () => {
+        state.settings.apiUrl = document.getElementById("apiUrl").value;
+        state.settings.apiKey = document.getElementById("apiKey").value;
+        state.settings.model = document.getElementById("apiModel").value;
+        state.settings.bubbleYou = document.getElementById("bubbleYou").value;
+        state.settings.bubbleMe = document.getElementById("bubbleMe").value;
+        persist();
+      };
+      document.getElementById("exportBtn").onclick = () => {
+        const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "ai-phone-backup.json"; a.click();
+      };
+      document.getElementById("importBtn").onclick = () => document.getElementById("importFile").click();
+      document.getElementById("importFile").onchange = e => {
+        const file = e.target.files[0]; if (!file) return;
+        const r = new FileReader();
+        r.onload = () => { try { state = JSON.parse(r.result); persist(); } catch {} };
+        r.readAsText(file);
+      };
+    }
+
+    // music
+    const audio = new Audio();
+    let playlist = [], idx = 0;
+    const audioFiles = document.getElementById("audioFiles");
+    const songName = document.getElementById("songName");
+    document.getElementById("importAudio").onclick = () => audioFiles.click();
+    audioFiles.onchange = (e) => {
+      playlist = [...e.target.files].map(f => ({ name: f.name, url: URL.createObjectURL(f) }));
+      idx = 0;
+      if (playlist.length) loadSong();
+    };
+    function loadSong() {
+      audio.src = playlist[idx].url;
+      songName.textContent = playlist[idx].name;
+      audio.play();
+      document.getElementById("playPause").textContent = "暂停";
+    }
+    document.getElementById("playPause").onclick = () => {
+      if (!audio.src) return;
+      if (audio.paused) { audio.play(); playPause.textContent = "暂停"; }
+      else { audio.pause(); playPause.textContent = "播放"; }
+    };
+    document.getElementById("next").onclick = () => {
+      if (!playlist.length) return;
+      idx = (idx + 1) % playlist.length; loadSong();
+    };
+
+    // very lightweight pwa registration
+    if ('serviceWorker' in navigator) {
+      const sw = `self.addEventListener('install',e=>e.waitUntil(caches.open('ai-phone-v1').then(c=>c.addAll(['./']))));self.addEventListener('fetch',e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));`;
+      const blob = new Blob([sw], { type:'text/javascript' });
+      navigator.serviceWorker.register(URL.createObjectURL(blob));
+    }
+  </script>
+</body>
+</html>
